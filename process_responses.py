@@ -166,8 +166,9 @@ Rules (apply in order):
    - Remove trailing/leading whitespace when matching, ignore case when deciding canonical form, but preserve the original input as the JSON key exactly as given.
    - Resolve obvious synonyms/abbreviations and common misspellings if confident (e.g., "U.S.A." -> "United States").
 """
-
-    normalisation_mapping = ast.literal_eval(gpt_call(user_prompt=counts_df["value"].unique(), system_prompt=system_prompt_normalisation))
+    gpt_response = gpt_call(user_prompt=str(counts_df["value"].unique()), system_prompt=system_prompt_normalisation)
+    clean_response = re.sub(r"^```(?:json)?|```$", "", gpt_response.strip(), flags=re.MULTILINE).strip()
+    normalisation_mapping = ast.literal_eval(clean_response)
 
     normalisation_json_path = f"responses_{model}/{topic}/normalisation.json"
     with open(normalisation_json_path, "w") as f:
