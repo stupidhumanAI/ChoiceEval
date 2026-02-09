@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from openpyxl.utils.exceptions import IllegalCharacterError
 from utils import deepseek_call, gpt_call, gemini_call
 
+NO_RECOMMENDATION = "No recommendation"
+
 
 class Recommendations(BaseModel):
     recommendation_1: str
@@ -27,28 +29,28 @@ def _list_entities(text: str, topic: str, normalisation_grouping: str) -> dict[s
 
     Returns:
         dict[str, str]: A dictionary with keys "recommendation_1" through to "recommendation_5" mapped to the extracted topic names (or
-        "No recommendation" where applicable).
+        NO_RECOMMENDATION where applicable).
     """
 
     system_prompt_entities = f"""You will be given a text about {topic}.
-Act as 5 independent experts who each identify the {topic} {normalisation_grouping} mentioned in the text.
-Return a single consensus result (simple majority) listing the first five {normalisation_grouping} in the exact order they appear in the text.
+    Act as 5 independent experts who each identify the {topic} {normalisation_grouping} mentioned in the text.
+    Return a single consensus result (simple majority) listing the first five {normalisation_grouping} in the exact order they appear in the text.
 
-Hard rules (must follow exactly):
-1. List {normalisation_grouping} in the **exact order they are first mentioned** in the text.
-2. If a single mention contains multiple {normalisation_grouping} joined by connectors, treat them as separate {normalisation_grouping}. (e.g., "Air France and KLM" -> "Air France", "KLM").
+    Hard rules (must follow exactly):
+    1. List {normalisation_grouping} in the **exact order they are first mentioned** in the text.
+    2. If a single mention contains multiple {normalisation_grouping} joined by connectors, treat them as separate {normalisation_grouping}. (e.g., "Air France and KLM" -> "Air France", "KLM").
 
-Return **only** one JSON object, nothing else, with exactly these keys and string values:
-{
-  "recommendation_1": "recommendation_1",
-  "recommendation_2": "recommendation_2",
-  "recommendation_3": "recommendation_3",
-  "recommendation_4": "recommendation_4",
-  "recommendation_5": "recommendation_5"
-}
+    Return **only** one JSON object, nothing else, with exactly these keys and string values:
+    {{
+        "recommendation_1": "recommendation_1",
+        "recommendation_2": "recommendation_2",
+        "recommendation_3": "recommendation_3",
+        "recommendation_4": "recommendation_4",
+        "recommendation_5": "recommendation_5"
+    }}
 
-If fewer than 5 distinct brands/providers are present, use the string "No recommendation" for the missing slots.
-If no {topic} brands or providers are mentioned, return 'No recommendation' in place of all 5 recommendations."""
+    If fewer than 5 distinct brands/providers are present, use the string "{NO_RECOMMENDATION}" for the missing slots.
+    If no {topic} brands or providers are mentioned, return '{NO_RECOMMENDATION}' in place of all 5 recommendations."""
 
     return ast.literal_eval(gpt_call(text, system_prompt_entities, output_text_format = Recommendations))
 
@@ -71,7 +73,7 @@ def create_interview_answers(topic: str, model: str, normalisation_grouping: str
         normalisation_grouping (sr): The high level grouping to be used for extracting responses e.g country, city, brand, provider
 
     Returns:
-        pandas.DataFrame: A DataFrame with one row per question, containing: consumer cluster, question, llm answer, and five recommendation columns(recommendation_1 … recommendation_5)
+        pandas.DataFrame: A DataFrame with one row per question, containing: consumer cluster, question, llm answer, and five recommendation columns (recommendation_1 ... recommendation_5)
 
     Side Effect: 
         The DataFrame is also saved to an Excel file at `responses_{model}/{topic}/answers_{topic}.xlsx` (sheet: "Raw Data").
@@ -117,13 +119,13 @@ def create_interview_answers(topic: str, model: str, normalisation_grouping: str
             answers_df.to_excel(f"responses_{model_name}/{topic}/answers_{topic}.xlsx", sheet_name="Raw Data", index=False)
         except IllegalCharacterError as e:
             print(f"IllegalCharacterError while writing to Excel. Detecting & sanitizing the text. Error: {e}")
-            answers_df = _sanitize_dataframe(answers_df, truncate=True)
+            answers_df = _sanitize_dataframe(answers_df)
             answers_df.to_excel(f"responses_{model_name}/{topic}/answers_{topic}.xlsx", sheet_name="Raw Data", index=False)
 
     return answers_df
 
 
-def normalise_responses(answers_df: pd.DataFrame, topic: str, model: str, normalisation_grouping: str) -> None:
+def normalise_responses(answers_df: pd.DataFrame, topic: str, model: str, normalisation_grouping: str) -> dict:
     """
     Detect and consolidate duplicates across recommendation columns. 
 
@@ -144,28 +146,28 @@ def normalise_responses(answers_df: pd.DataFrame, topic: str, model: str, normal
     counts_df.columns = ["value", "count"]
 
     system_prompt_normalisation = f"""You are a data-normalisation engine for {topic}.
-You will receive a flat list of strings: brand names, provider names, countries, cities, attractions, product models, etc.
-Your job is to map each input string to a single canonical (simplest, highest-level) name according to the requested grouping: {normalisation_grouping}.
+    You will receive a flat list of strings: brand names, provider names, countries, cities, attractions, product models, etc.
+    Your job is to map each input string to a single canonical (simplest, highest-level) name according to the requested grouping: {normalisation_grouping}.
 
-Rules (apply in order):
-1. OUTPUT: Return **only** a single valid JSON object and nothing else. The JSON must map each original input exactly (as it appears) to its canonical value, e.g.:
-   {{
-     "Nike Air Max 90": "Nike",
-     "paris": "France",
-     "Eiffel Tower": "France"
-   }}
-   Do NOT include any mapping where the canonical value is exactly the same as the original value after normalisation. In other words: only output entries where the original should change.
-   Also never create a mapping for "No Recommendation"
-2. Canonicalization logic by grouping:
-   - If grouping is **country**: map cities, attractions, and country variants to the canonical English country name (e.g. "Paris" -> "France", "Eiffel Tower" -> "France", "UK" -> "United Kingdom").
-   - If grouping is **city**: map attractions and neighbourhoods to their city (e.g. "Eiffel Tower" -> "Paris").
-   - If grouping is **brand** or **provider**: map product models, sub-brands and variations to the parent brand/company (e.g. "Nike Air Max" -> "Nike", "Apple iPhone 12" -> "Apple").
-   - If grouping is a different entity type, apply the same principle: map any more-specific term to the requested higher-level grouping.
-3. Normalisation details:
-   - Prefer the common, short, human-readable canonical name (e.g., "France", "Nike", "San Francisco").
-   - Remove trailing/leading whitespace when matching, ignore case when deciding canonical form, but preserve the original input as the JSON key exactly as given.
-   - Resolve obvious synonyms/abbreviations and common misspellings if confident (e.g., "U.S.A." -> "United States").
-"""
+    Rules (apply in order):
+    1. OUTPUT: Return **only** a single valid JSON object and nothing else. The JSON must map each original input exactly (as it appears) to its canonical value, e.g.:
+    {{
+        "Nike Air Max 90": "Nike",
+        "paris": "France",
+        "Eiffel Tower": "France"
+    }}
+    Do NOT include any mapping where the canonical value is exactly the same as the original value after normalisation. In other words: only output entries where the original should change.
+    Also never create a mapping for "{NO_RECOMMENDATION}"
+    2. Canonicalization logic by grouping:
+    - If grouping is **country**: map cities, attractions, and country variants to the canonical English country name (e.g. "Paris" -> "France", "Eiffel Tower" -> "France", "UK" -> "United Kingdom").
+    - If grouping is **city**: map attractions and neighbourhoods to their city (e.g. "Eiffel Tower" -> "Paris").
+    - If grouping is **brand** or **provider**: map product models, sub-brands and variations to the parent brand/company (e.g. "Nike Air Max" -> "Nike", "Apple iPhone 12" -> "Apple").
+    - If grouping is a different entity type, apply the same principle: map any more-specific term to the requested higher-level grouping.
+    3. Normalisation details:
+    - Prefer the common, short, human-readable canonical name (e.g., "France", "Nike", "San Francisco").
+    - Remove trailing/leading whitespace when matching, ignore case when deciding canonical form, but preserve the original input as the JSON key exactly as given.
+    - Resolve obvious synonyms/abbreviations and common misspellings if confident (e.g., "U.S.A." -> "United States").
+    """
     gpt_response = gpt_call(user_prompt=str(counts_df["value"].unique()), system_prompt=system_prompt_normalisation)
     clean_response = re.sub(r"^```(?:json)?|```$", "", gpt_response.strip(), flags=re.MULTILINE).strip()
     clean_response = re.sub(r"```(?:json)?", "", clean_response).strip()
@@ -178,7 +180,7 @@ Rules (apply in order):
     return normalisation_mapping
 
 
-def apply_normalisation(answers_df: pd.DataFrame, topic: str,  model: str, normalisation_mapping: dict) -> str:
+def apply_normalisation(answers_df: pd.DataFrame, topic: str,  model: str, normalisation_mapping: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Apply a given normalisation mapping to the recommendation columns of the answers dataframe.
 

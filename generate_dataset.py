@@ -19,8 +19,7 @@ def translate_clusters(topic: str) -> list[str]:
         ConsumerCluster: A object containing the list of the translated topic-specific clusters.
     """
 
-    user_prompt_consumer_clusters = f"""
-    Consumer groups:
+    user_prompt_consumer_clusters = f"""Consumer groups:
     1. Performance and Quality Seekers
     2. Budget-Conscious Shoppers
     3. Innovation and Technology Enthusiasts
@@ -33,10 +32,11 @@ def translate_clusters(topic: str) -> list[str]:
 
     Topic: {topic}"""
 
-    system_prompt_consumer_clusters = """You will be given a topic and a list of consumer clusters. Your task is to convert what each cluster should translate into for the specific topic. 
+    system_prompt_consumer_clusters = """You will be given a topic and a list of consumer clusters. 
+    Your task is to convert what each cluster should translate into for the specific topic. 
     Output: the list of the translated consumer clusters for the specific topic. Provide the answer in a structured json in the following format:
     {
-    "translated_consumer_clusters": list of translated clusters
+        "translated_consumer_clusters": list of translated clusters
     }"""
 
     class ConsumerClusters(BaseModel):
@@ -61,52 +61,50 @@ def generate_questions(topic: str, total_questions: int = 207) -> dict[str, list
     clusters = translate_clusters(topic)
     n_questions_per_cluster = math.ceil(total_questions/len(clusters))
 
-    system_prompt_questions = """You will be given a topic, a list of consumer groups and a number of questions. Your task is 
-    to create user queries as if they were directed to an AI assistant on a specific topic. The goal is to produce questions 
-    that will result in answers which are specific examples of [topic]. 
+    system_prompt_questions = """You will be given a topic, a list of consumer groups and a number of questions. Your task is
+    to create user queries as if they were directed to an AI assistant on a specific topic. The goal is to produce questions
+    that will result in answers which are specific examples of [topic].
 
-    For each consumer group, create a list of search queries that a user seeking recommendations in the consideration phase of 
-    their consumer journey—belonging to that specific consumer group—might ask. The questions should be formulated so that the 
+    For each consumer group, create a list of search queries that a user seeking recommendations in the consideration phase of
+    their consumer journey--belonging to that specific consumer group--might ask. The questions should be formulated so that the
     answers are instances of the [topic]. The number of questions for each group must be equal to the number you are given.
-    Important: each question should specifically mention the [topic] in it. 
+    Important: each question should specifically mention the [topic] in it.
 
-    In the consideration phase of the consumer journey, consumers actively explore and evaluate various products or services 
+    In the consideration phase of the consumer journey, consumers actively explore and evaluate various products or services
     to address their needs or solve a problem. Key characteristics: research and information gathering, evaluation of alternatives,
-    engagement with brand content, influence of social proof and reviews, development of preferences and shortlists and establishing 
+    engagement with brand content, influence of social proof and reviews, development of preferences and shortlists and establishing
     expectations and criteria. Ensure each question is asked in a way that the answer would recommend a specific recommendation.
 
     Example with Topic as Fruits:
 
     Right Responses (Questions where the answers are specific fruits):
 
-    •	“What fruits are high in vitamin C?”
-    •	“Which fruits are best for making smoothies?”
-    •	“What are some exotic fruits to try this summer?”
-    •	“Which fruits are low in sugar but high in fiber?”
+    - "What fruits are high in vitamin C?"
+    - "Which fruits are best for making smoothies?"
+    - "What are some exotic fruits to try this summer?"
+    - "Which fruits are low in sugar but high in fiber?"
 
     Wrong Responses (Questions leading to advice or methods):
 
-    •	“How can I ripen fruits faster at home?”
-    •	“What is the best way to store different types of fruits?”
-    •	“How do I know if a fruit is organic?”
-    •	“What are the health benefits of eating fruits daily?”
+    - "How can I ripen fruits faster at home?"
+    - "What is the best way to store different types of fruits?"
+    - "How do I know if a fruit is organic?"
+    - "What are the health benefits of eating fruits daily?"
 
-    Provide a string containing a dictionary in the following structure: """ + """
+    Provide a string containing a dictionary in the following structure:
     {
-    "consumer_group_name": [
-        "Question 1",
-        "Question 2",
-        "...",
-        "Question N"
-    ]
+        "consumer_group_name": [
+            "Question 1",
+            "Question 2",
+            "...",
+            "Question N"
+        ]
     }
-    Do not append or prepend any text, return it in this exact form.
-    """
+    Do not append or prepend any text, return it in this exact form."""
 
-    user_prompt_questions = f"""
-    Topic: {topic}
-    Consumer groups: {clusters}
-    Number of questions: {n_questions_per_cluster}"""
+    user_prompt_questions = f"""Topic: {topic}
+Consumer groups: {clusters}
+Number of questions: {n_questions_per_cluster}"""
 
     questions_json = gpt_call(user_prompt_questions, system_prompt_questions)
     return ast.literal_eval(questions_json)

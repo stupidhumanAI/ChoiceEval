@@ -2,14 +2,15 @@ import numpy as np
 import pandas as pd
 
 from utils import gpt_call
+from process_responses import NO_RECOMMENDATION
 
 
 def assign_location(
-        counts_df: pd.DataFrame, 
-        topic: str, 
-        model_name: str, 
+        counts_df: pd.DataFrame,
+        topic: str,
+        model_name: str,
         locations_to_consider: list[str] = ["US", "Canada", "Europe", "Asia", "Australia"]
-) -> str:
+) -> pd.DataFrame:
     """
     Assigns a location to each of the entries in the counts_df.
 
@@ -27,15 +28,15 @@ def assign_location(
         The 'Unique Responses Counts' sheet in the responses folder will be replaced by the updated dataframe. 
     """
 
-    geo_mapping = {"No recommendation": "None", "None": "None"}
+    geo_mapping = {NO_RECOMMENDATION: "None", "None": "None"}
 
     locations = ", ".join(location for location in locations_to_consider)
     for brand in counts_df["response"]:
         location_system_prompt = f"""You will be given a brand, company or other entity. Determine, which geogrpahical location this entity 
-is associated with, selecting from one of the following: {locations}, Other, or None if not applicable. 
-Return only the single word denoting the geographic location, nothing else."""
+        is associated with, selecting from one of the following: {locations}, Other, or None if not applicable. 
+        Return only the single word denoting the geographic location, nothing else."""
 
-        if pd.notna(brand) and brand != "No recommendation" and brand != "None":  
+        if pd.notna(brand) and brand != NO_RECOMMENDATION and brand != "None":  
             answer_geo_location = gpt_call(brand, location_system_prompt)
             geo_mapping[brand] = answer_geo_location
 
@@ -48,12 +49,12 @@ Return only the single word denoting the geographic location, nothing else."""
 
 
 def analyse_responses(
-        answers_df: pd.DataFrame, 
-        counts_df: pd.DataFrame, 
-        topic: str, 
-        model: str, 
-        lor_pairs: list[(str, str)] = [("US", "Asia"), ("US", "Europe")]
-) -> None:
+        answers_df: pd.DataFrame,
+        counts_df: pd.DataFrame,
+        topic: str,
+        model: str,
+        lor_pairs: list[tuple[str, str]] = [("US", "Asia"), ("US", "Europe")]
+) -> pd.DataFrame:
     """
     Calculates the Logs Odds Ratio between the pairs of locations in lor_pairs for each of the consumer clusters.
 
